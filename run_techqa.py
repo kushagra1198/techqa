@@ -73,7 +73,10 @@ def load_model(args, model_class, config):
         torch.distributed.barrier()
 
     model.to(args.device)
-
+    
+    # model.named_parameter() --> (string, Parameter) – Tuple containing the name and parameter
+    # optimizer_grouped_parameters --> contains two dictonaries. 1st with all the parameters that have weight_decay and the 2nd dict 
+    # with no weight_decay parameters. The 'params' key contains list of papameter values (neumeric). 
     if args.do_train:
 
         parameters_to_optimize = list(model.named_parameters())
