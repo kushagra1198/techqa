@@ -534,7 +534,11 @@ def main():
         torch.distributed.barrier()
 
     args.model_type = args.model_type.lower()
+    
+    # config_class, model_class and tokenizer_class are imported from HuggingFace library. Example- tokenizer_class = BertTokenizer
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
+    
+    # .from_pretrained() is a method of HuggingFace classes
     config = config_class.from_pretrained(
         args.config_name if args.config_name else args.model_name_or_path,
         cache_dir=args.cache_dir if args.cache_dir else None,
