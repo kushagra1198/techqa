@@ -94,12 +94,12 @@ class WordTokenizerWithCharOffsetTracking(object):
         def inner(text):
             for match in re.finditer(r'\S+', text):
                 span = Span(start=match.start(), end=match.end())
-                tok = match.group(0)
+                tok = match.group(0)  # entire match i.e. blank space(s)
                 yield (tok, span)
 
         return list(inner(text))
 
-
+# takes input as string and tokenizer
 def _get_tokenized_text_and_mapping_to_original_offsets(
         text: str, tokenizer: PreTrainedTokenizer,
         max_number_of_tokens: Optional[int] = None) -> Tuple[List[str], List[Span]]:
@@ -112,8 +112,11 @@ def _get_tokenized_text_and_mapping_to_original_offsets(
     # specific word pieces
     for word, char_offset_boundaries_for_this_word in WordTokenizerWithCharOffsetTracking.tokenize(
             text):
+        # word --> individual words in text. 
+        # char_offset_boundaries_for_this_word --> Span([start, end+1]) of word.
+        # word_pieces --> each word converted to list os strings. Ex. "Hello"=["Hello"] and "sup"=["su","##p"]
         word_pieces = tokenizer.tokenize(word)
-
+        
         if max_number_of_tokens is not None and len(tokens) + len(word_pieces) > \
                 max_number_of_tokens:
             logging.warning('Truncating text after %d word piece tokens' % len(tokens))
@@ -199,7 +202,7 @@ def _map_answer_char_offsets_to_token_boundaries(
         end_token_idx = len(token_idx_to_char_offset_boundaries) - 1
 
     return Span(start=start_token_idx, end=end_token_idx)
-      
+     
 def _prepare_query_segment(query: Dict[str, str], max_query_length: int, sep_tokens: List[str],
                            tokenizer: PreTrainedTokenizer) -> List[str]:
     try:
@@ -220,6 +223,10 @@ def _prepare_query_segment(query: Dict[str, str], max_query_length: int, sep_tok
 
     return query_tokens
 
+# this takes as input a single question-document pair. Note: the document may or may not contain the answer-span. Returns TechQAInputFeature object.
+# qid - an id for the question
+# query - a dict - complete query having keys: QUESTION_ID, ANSWR, START_OFFSET, etc.
+# doc - a dictonary of format {"id":"","content":"","title":"",etc}  i.e a particular document.
 def generate_features_for_example(
         qid: str, query: dict, doc: dict, doc_id: str, answer_span: Span,
         tokenizer: PreTrainedTokenizer, max_seq_length: int, doc_stride: int,
@@ -227,12 +234,14 @@ def generate_features_for_example(
         add_doc_title_to_passage: bool = False) -> \
         List[TechQaInputFeature]:
     features = list()
-
+     
+    # between_text_segment_seperator defined seperately in case of BERT and RoBERTa
     between_text_segment_separator = [tokenizer.sep_token]
     if isinstance(tokenizer, RobertaTokenizer):
         # Roberta uses 2 sep tokens to separate segments
         between_text_segment_separator.append(tokenizer.sep_token)
-
+    
+    # _prepare_uery_segemt() takes in a query and the seperator token. It returns ?
     query_segment = _prepare_query_segment(query=query, tokenizer=tokenizer,
                                            sep_tokens=between_text_segment_separator,
                                            max_query_length=max_query_length)
@@ -321,16 +330,23 @@ def generate_features_for_example(
                 end_position=answer_span_within_context.end))
     return features
 
+# input_corpous_file is training_dev_technotes.json
+# input_query_file is dev_Q_A.json
+# converts each query-doc (all 50) pair to feature
 def create_features(input_query_file: str, input_corpus_file: str, max_seq_length: int,
                     max_query_length: int, doc_stride: int, tokenizer: PreTrainedTokenizer,
                     negative_subsampling_probability_when_has_answer: Optional[float] = None,
                     negative_subsampling_probability_when_no_answer: Optional[float] = None,
                     add_doc_title_to_passage: bool = False):
+    
+    #document_by_id is of form dict{key1:dict{},key2:dict{},...} 
+    # here "key" is a doc_id
     with open(input_corpus_file, encoding=TEXT_ENCODING) as infile:
         logging.info('Loading corpus text from %s' % infile)
         document_by_id = json.load(infile)
         logging.info('Loaded %d documents from corpus' % len(document_by_id))
-
+    
+    # queries contain all dictonaries.
     with open(input_query_file, encoding=TEXT_ENCODING) as infile:
         logging.info('Loading queries and annotations from %s' % infile)
         queries = json.load(infile)
@@ -343,7 +359,8 @@ def create_features(input_query_file: str, input_corpus_file: str, max_seq_lengt
         negative_subsampling_probability_when_no_answer = 1.0
 
     features = []
-
+    
+    # a query is a dictonary having many keys. Example: QUESTION_ID, QUESTION_TITLE, ANSWER, START_OFFSET, DOC_IDS,etc
     for i, query in enumerate(tqdm(queries, desc='Featurizing queries')):
         qid = "The %d th query" % i
         try:
