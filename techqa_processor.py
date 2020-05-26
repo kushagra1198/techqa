@@ -60,7 +60,8 @@ class Span(object):
 
     def is_null_span(self):
         return self.start == -1 or self.end == -1
-
+    
+    # other can be a Span object or int.
     def __contains__(self, other):
         if self.is_null_span():
             return False
@@ -149,8 +150,13 @@ def _map_answer_boundaries_to_doc_span_vector_offsets(
     return answer_span_within_answer_segment
 
 
+# total_length is the length of the complete document text.
+# window_length is the length remaining after filling the query tokens into the 512 input space i.e. token space for the context/document.
+# stride_length: default=192 meaning:"When splitting up a long document into chunks, how much stride to take between chunks?"
 def _split_into_spans(total_length: int, window_length: int, stride_length: int) -> List[Span]:
     spans = list()
+    # incase total_length<=window_length means the document will fit in the space and we do not need to split the document.
+    # suppose total_length=200 and window_length=256 means span=[Span(0,200)]
     if total_length <= window_length:
         logging.debug('Window size (%d) for splitting is larger than the total document size: %d' %
                       (window_length, total_length))
@@ -161,9 +167,10 @@ def _split_into_spans(total_length: int, window_length: int, stride_length: int)
             spans.append(Span(start_offset,
                               end=min(start_offset + window_length, total_length)))
             start_offset += stride_length
+    # else: suppose total_length=800 and window_length=256, then span=[Span(0,256),Span(192,448),Span(384,649),Span(576,800)]
     return spans
 
-
+# returns Span(starting token number, end token number)
 def _map_answer_char_offsets_to_token_boundaries(
         answer_span_in_char_offsets: Span, token_idx_to_char_offset_boundaries: List):
     # NOTE: the character offsets may not align exactly with our token boundaries so we find the
@@ -178,13 +185,14 @@ def _map_answer_char_offsets_to_token_boundaries(
                 # char offset
                 start_token_idx = token_idx
             elif answer_span_in_char_offsets.start < token_char_boundaries.start:
+                # in case answer_start is not inside a token we use the start of the just next token.
                 # We use the first token that starts after the specified start char offset
                 start_token_idx = token_idx
 
         if end_token_idx is None:
             # NOTE: annotations use exclusive end offset, but we want inclusive token end offset
             if token_char_boundaries.start >= answer_span_in_char_offsets.end:
-                # We found the first token that starts _after_ the specified end char offset, so
+                # We found the first token that starts _after_ the specified (answer) end char offset, so
                 # use the previous token
                 end_token_idx = max(0, token_idx - 1)
             elif (answer_span_in_char_offsets.end - 1) in token_char_boundaries:
@@ -282,7 +290,9 @@ def generate_features_for_example(
     sliding_window_spans =  _split_into_spans(total_length=len(document_tokens),
                                              window_length=context_size,
                                              stride_length=doc_stride)
-
+    
+    # modify answer span if it is not null
+    # change it to Span of token numbers. i,e Span(token_num_start,token_num_end)
     if not answer_span.is_null_span():
         answer_span = _map_answer_char_offsets_to_token_boundaries(answer_span,
                                                                    token_idx_to_char_boundaries)
