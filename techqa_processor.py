@@ -279,7 +279,7 @@ def generate_features_for_example(
     if len(document_tokens) < 1:
         logging.warning('No document tokens left after tokenization for doc id %s' % doc['_id'])
         return features
-    sliding_window_spans =  (total_length=len(document_tokens),
+    sliding_window_spans =  _split_into_spans(total_length=len(document_tokens),
                                              window_length=context_size,
                                              stride_length=doc_stride)
 
