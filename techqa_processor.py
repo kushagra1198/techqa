@@ -113,15 +113,18 @@ def _get_tokenized_text_and_mapping_to_original_offsets(
     for word, char_offset_boundaries_for_this_word in WordTokenizerWithCharOffsetTracking.tokenize(
             text):
         # word --> individual words in text. 
-        # char_offset_boundaries_for_this_word --> Span([start, end+1]) of word.
-        # word_pieces --> each word converted to list os strings. Ex. "Hello"=["Hello"] and "sup"=["su","##p"]
+        # char_offset_boundaries_for_this_word --> Span(boundaries[start, end+1)]) of word.
+        # word_pieces --> each word converted to list of strings. Ex. "Hello"=["Hello"] and "sup"=["su","##p"]
         word_pieces = tokenizer.tokenize(word)
         
         if max_number_of_tokens is not None and len(tokens) + len(word_pieces) > \
                 max_number_of_tokens:
             logging.warning('Truncating text after %d word piece tokens' % len(tokens))
             break
-
+            
+        # tokens --> list of word_pieces. Ex. ['hello', 'world', 'su', '##p']
+        # token_idx_to_char_boundaries --> list of char_offset_boundaries_for_this_words. Ex.[Span[boundaries=[0,5)],Span[boundaries=[6,11)],
+        # Span[boundaries=[12,15)], Span[boundaries=[12,15)]]
         for word_piece in tokenizer.tokenize(word):
             tokens.append(word_piece)
             token_idx_to_char_boundaries.append(char_offset_boundaries_for_this_word)
@@ -202,7 +205,10 @@ def _map_answer_char_offsets_to_token_boundaries(
         end_token_idx = len(token_idx_to_char_offset_boundaries) - 1
 
     return Span(start=start_token_idx, end=end_token_idx)
-     
+
+# this function first tokenizes title and body of query
+# in case length of title+body+sep > max_length shorten the title --> title[:max_length/2] & body[:(max_length-len(title+sep))]. 
+# Appned the three lists and return
 def _prepare_query_segment(query: Dict[str, str], max_query_length: int, sep_tokens: List[str],
                            tokenizer: PreTrainedTokenizer) -> List[str]:
     try:
@@ -233,6 +239,7 @@ def generate_features_for_example(
         max_query_length: int, negative_span_subsampling_probability: float,
         add_doc_title_to_passage: bool = False) -> \
         List[TechQaInputFeature]:
+    
     features = list()
      
     # between_text_segment_seperator defined seperately in case of BERT and RoBERTa
@@ -241,25 +248,29 @@ def generate_features_for_example(
         # Roberta uses 2 sep tokens to separate segments
         between_text_segment_separator.append(tokenizer.sep_token)
     
-    # _prepare_uery_segemt() takes in a query and the seperator token. It returns ?
+    # _prepare_uery_segemt() takes in a query and the seperator token. It returns list of tokens (tokenized query)
+    # i.e title, sep_tokens and body concatenated.
     query_segment = _prepare_query_segment(query=query, tokenizer=tokenizer,
                                            sep_tokens=between_text_segment_separator,
                                            max_query_length=max_query_length)
     if len(query_segment) < 1:
         logging.warning('No query tokens left after tokenization for qid %s' % qid)
         return features
-
+    
     query_segment = [tokenizer.cls_token] + query_segment + between_text_segment_separator
+    # length of context depends on the length of query
     context_size = max_seq_length - len(query_segment) - 1
     if add_doc_title_to_passage:
         document_title_tokens, _ = _get_tokenized_text_and_mapping_to_original_offsets(
             text=doc['title'],
             tokenizer=tokenizer)[: context_size // 2]
 
-        # better to add doc title to query segment rather than doc (i.e. segment id == [0])
+        # its better to add doc title to query segment rather than doc (i.e. segment id == [0])
         query_segment += document_title_tokens + between_text_segment_separator
         context_size -= len(document_title_tokens) + len(between_text_segment_separator)
+        # reduce context size further in case we add doc_title to query segemnt
     
+    # tokenize doc['text'] i.e technote doc. 
     document_tokens, token_idx_to_char_boundaries = \
         _get_tokenized_text_and_mapping_to_original_offsets(
             text=doc['text'],
@@ -268,7 +279,7 @@ def generate_features_for_example(
     if len(document_tokens) < 1:
         logging.warning('No document tokens left after tokenization for doc id %s' % doc['_id'])
         return features
-    sliding_window_spans = _split_into_spans(total_length=len(document_tokens),
+    sliding_window_spans =  (total_length=len(document_tokens),
                                              window_length=context_size,
                                              stride_length=doc_stride)
 
