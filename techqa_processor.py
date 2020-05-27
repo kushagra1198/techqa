@@ -317,6 +317,9 @@ def generate_features_for_example(
         span_token_to_original_start_offset = {
             i - doc_span.start + size_of_question_segment: token_idx_to_char_boundaries[i].start for i
             in range(doc_span.start, doc_span.end)}
+        # here i-doc_span.start will start from 0 and go upto doc_span.end.
+        # Ex. size_of_ques_segment is 256. Suppose we start from Span(0,256) then 
+        # span_token_to_orignal_start_offset will be a dict like 256:start_bound(first word in doc_span), 257:start_bound(next word in doc_span),..512:
         span_token_to_original_end_offset = {
             i - doc_span.start + size_of_question_segment: token_idx_to_char_boundaries[i].end for i
             in range(doc_span.start, doc_span.end)}
