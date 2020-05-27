@@ -125,7 +125,7 @@ def _get_tokenized_text_and_mapping_to_original_offsets(
             
         # tokens --> list of word_pieces. Ex. ['hello', 'world', 'su', '##p']
         # token_idx_to_char_boundaries --> list of char_offset_boundaries_for_this_words. Ex.[Span[boundaries=[0,5)],Span[boundaries=[6,11)],
-        # Span[boundaries=[12,15)], Span[boundaries=[12,15)]]
+        # Span[boundaries=[12,15)], Span[boundaries=[12,15)]]. Note: Span() is always printed as Span[boundaries=[,)]
         for word_piece in tokenizer.tokenize(word):
             tokens.append(word_piece)
             token_idx_to_char_boundaries.append(char_offset_boundaries_for_this_word)
@@ -216,7 +216,7 @@ def _map_answer_char_offsets_to_token_boundaries(
 
 # this function first tokenizes title and body of query
 # in case length of title+body+sep > max_length shorten the title --> title[:max_length/2] & body[:(max_length-len(title+sep))]. 
-# Appned the three lists and return
+# Appned the three lists and return a list of tokens. Ex. ['hello','bro',[SEP],'how','are','you']
 def _prepare_query_segment(query: Dict[str, str], max_query_length: int, sep_tokens: List[str],
                            tokenizer: PreTrainedTokenizer) -> List[str]:
     try:
@@ -257,7 +257,7 @@ def generate_features_for_example(
         between_text_segment_separator.append(tokenizer.sep_token)
     
     # _prepare_uery_segemt() takes in a query and the seperator token. It returns list of tokens (tokenized query)
-    # i.e title, sep_tokens and body concatenated.
+    # i.e title, sep_tokens and body concatenated. 
     query_segment = _prepare_query_segment(query=query, tokenizer=tokenizer,
                                            sep_tokens=between_text_segment_separator,
                                            max_query_length=max_query_length)
@@ -279,6 +279,7 @@ def generate_features_for_example(
         # reduce context size further in case we add doc_title to query segemnt
     
     # tokenize doc['text'] i.e technote doc. 
+    # Note: token_idx_to_char_boundaries is of form [Span(),Span(),...]
     document_tokens, token_idx_to_char_boundaries = \
         _get_tokenized_text_and_mapping_to_original_offsets(
             text=doc['text'],
@@ -308,7 +309,8 @@ def generate_features_for_example(
         size_of_question_segment = len(segment_ids)
 
         # Map the original token index offsets to the feature vector containing the current doc
-        # span, the query, and the special tokens
+        # span, the query, and the special tokens. So, for instance query_segment is 256 token long meaning doc_span 
+        # is remaining 256 token. Now if answer is within the doc_span Ex. Span(260,275) <-- this is what ans_span_within_context will contain.
         answer_span_within_context = _map_answer_boundaries_to_doc_span_vector_offsets(
             original_answer_span=answer_span,
             size_of_question_segment=size_of_question_segment, doc_span=doc_span)
